@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Claude Code
+CLAUDE.md
+claude_code/
+# Claude Code is an AI-powered code editor. `.claudeignore` specifies files/directories to
+# exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
+# refer to https://claude.ai/docs/claude-code-ignore-files
+
