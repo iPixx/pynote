@@ -39,7 +39,7 @@ The focus of this phase is to build a usable, standalone markdown editor.
 
 - [x] **Vault Management:** Select and open a local folder as your note vault.
 - [x] **File Tree:** Display a list of all `.md` files in the vault.
-- [ ] **Markdown Editor:** A robust editor with syntax highlighting (using CodeMirror).
+- [x] **Markdown Editor:** A robust editor with syntax highlighting (using CodeMirror).
 - [x] **Live Preview:** Rendered view of the markdown file.
 - [x] **File Operations:** Create, read, update, and save notes.
 

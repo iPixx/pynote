@@ -18,54 +18,87 @@ class PyNote {
     initEditor() {
         const editorElement = document.getElementById('editor');
         
-        // Create textarea editor
-        editorElement.innerHTML = `
-            <textarea id="markdown-editor" 
-                placeholder="Start writing your markdown here..."
-                spellcheck="false"
-                wrap="soft">
-            </textarea>
-        `;
+        // Create textarea element for CodeMirror
+        const textarea = document.createElement('textarea');
+        textarea.id = 'markdown-editor';
+        textarea.placeholder = 'Start writing your markdown here...';
+        editorElement.appendChild(textarea);
         
-        const textarea = document.getElementById('markdown-editor');
+        // Initialize CodeMirror
+        this.codeMirror = CodeMirror.fromTextArea(textarea, {
+            mode: 'gfm',
+            lineNumbers: true,
+            lineWrapping: true,
+            theme: 'default',
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false,
+            autofocus: false,
+            placeholder: 'Start writing your markdown here...',
+            viewportMargin: Infinity,
+            extraKeys: {
+                'Ctrl-S': () => this.saveFile(),
+                'Cmd-S': () => this.saveFile(),
+                'Tab': (cm) => {
+                    if (cm.somethingSelected()) {
+                        cm.indentSelection('add');
+                    } else {
+                        cm.replaceSelection(cm.getOption('indentWithTabs') ? '\t' : 
+                            Array(cm.getOption('indentUnit') + 1).join(' '), 'end', '+input');
+                    }
+                },
+                'Shift-Tab': (cm) => cm.indentSelection('subtract')
+            }
+        });
         
-        // Add input listener
-        textarea.addEventListener('input', () => {
+        // Set initial size
+        this.resizeEditor();
+        
+        // Setup resize observer for better responsiveness
+        if (window.ResizeObserver) {
+            const resizeObserver = new ResizeObserver(() => {
+                this.resizeEditor();
+                this.codeMirror.refresh();
+            });
+            resizeObserver.observe(editorElement);
+        }
+        
+        // Add change listener
+        this.codeMirror.on('change', () => {
             this.unsavedChanges = true;
             this.updatePreview();
             this.updateUI();
         });
-
-        // Add tab key support for indentation
-        textarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Tab') {
-                e.preventDefault();
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                
-                // Insert tab character
-                textarea.value = textarea.value.substring(0, start) + 
-                    '\t' + textarea.value.substring(end);
-                
-                // Move cursor after the tab
-                textarea.selectionStart = textarea.selectionEnd = start + 1;
-                
-                // Trigger input event
-                this.unsavedChanges = true;
-                this.updatePreview();
-                this.updateUI();
-            }
-        });
         
+        // Create editor interface
         this.editor = {
-            getValue: () => textarea.value,
+            getValue: () => this.codeMirror.getValue(),
             setValue: (value) => { 
-                textarea.value = value;
+                this.codeMirror.setValue(value);
                 this.updatePreview();
+                // Refresh CodeMirror to ensure proper sizing
+                setTimeout(() => {
+                    this.resizeEditor();
+                    this.codeMirror.refresh();
+                }, 50);
             },
-            focus: () => textarea.focus(),
-            getElement: () => textarea
+            focus: () => this.codeMirror.focus(),
+            getElement: () => this.codeMirror.getWrapperElement(),
+            refresh: () => {
+                this.resizeEditor();
+                this.codeMirror.refresh();
+            }
         };
+    }
+
+    resizeEditor() {
+        if (!this.codeMirror) return;
+        
+        const editorContainer = document.getElementById('editor');
+        if (editorContainer) {
+            const containerHeight = editorContainer.clientHeight;
+            this.codeMirror.setSize(null, containerHeight);
+        }
     }
 
     bindEvents() {
@@ -106,6 +139,13 @@ class PyNote {
             if (this.unsavedChanges) {
                 e.preventDefault();
                 e.returnValue = '';
+            }
+        });
+
+        // Handle window resize to refresh CodeMirror
+        window.addEventListener('resize', () => {
+            if (this.editor && this.editor.refresh) {
+                setTimeout(() => this.editor.refresh(), 100);
             }
         });
 
@@ -463,6 +503,8 @@ class PyNote {
                     this.updateUI();
                     this.highlightActiveFile();
                     this.editor.focus();
+                    // Ensure proper sizing after content load
+                    this.editor.refresh();
                 }
             } else {
                 alert('Error opening file: ' + result.error);

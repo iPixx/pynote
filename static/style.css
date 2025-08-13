@@ -179,35 +179,114 @@ body {
     font-size: 14px;
     line-height: 1.5;
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-#markdown-editor {
-    width: 100%;
-    height: 100%;
-    border: none;
-    outline: none;
-    resize: none;
-    padding: 1rem 1rem 4rem 1.5rem;
+/* CodeMirror styling */
+.CodeMirror {
+    flex: 1;
+    height: auto;
     font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Fira Code', Consolas, 'Courier New', monospace;
     font-size: 14px;
     line-height: 1.6;
     background-color: #fafafa;
     color: #333;
-    tab-size: 4;
-    -moz-tab-size: 4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+    border: none;
+    resize: none;
 }
 
-#markdown-editor:focus {
+.CodeMirror-focused {
     background-color: #fff;
     box-shadow: inset 0 0 0 1px #007acc;
 }
 
-#markdown-editor::placeholder {
+.CodeMirror-lines {
+    padding: 1rem 0;
+}
+
+.CodeMirror-gutters {
+    background-color: #f5f5f5;
+    border-right: 1px solid #ddd;
+}
+
+.CodeMirror-linenumber {
+    color: #999;
+    padding: 0 8px;
+}
+
+.CodeMirror-cursor {
+    border-color: #007acc;
+}
+
+.CodeMirror-selected {
+    background-color: #d4f1ff;
+}
+
+.CodeMirror-placeholder {
     color: #999;
     font-style: italic;
+}
+
+/* Markdown syntax highlighting */
+.cm-header {
+    color: #2c5aa0;
+    font-weight: bold;
+}
+
+.cm-strong {
+    font-weight: bold;
+}
+
+.cm-em {
+    font-style: italic;
+}
+
+.cm-link {
+    color: #0969da;
+    text-decoration: underline;
+}
+
+.cm-quote {
+    color: #656d76;
+    font-style: italic;
+}
+
+.cm-keyword {
+    color: #cf222e;
+}
+
+.cm-atom {
+    color: #0969da;
+}
+
+.cm-comment {
+    color: #6f6f6f;
+}
+
+.cm-variable-2 {
+    color: #953800;
+}
+
+.cm-string {
+    color: #0a3069;
+}
+
+.cm-property {
+    color: #8250df;
+}
+
+.cm-url {
+    color: #0969da;
+}
+
+.cm-tag {
+    color: #116329;
+}
+
+.cm-attribute {
+    color: #0550ae;
 }
 
 #preview {
