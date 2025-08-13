@@ -63,12 +63,13 @@ This phase integrates a local Large Language Model (LLM) to turn pyNote into a c
 
 ### 🛠️ Technology Stack
 
-- **Framework:** [Electron](https://www.electronjs.org/)
-- **Frontend:** [React](https://reactjs.org/)
-- **Editor Component:** [CodeMirror 6](https://codemirror.net/)
-- **AI (Embeddings):** [Transformers.js](https://huggingface.co/docs/transformers.js)
+- **Backend:** Python
+- **Frontend:** JavaScript, CSS
+- **Package Manager:** [uv](https://docs.astral.sh/uv/)
+- **Linting/Formatting:** [ruff](https://docs.astral.sh/ruff/)
+- **Testing:** [pytest](https://docs.pytest.org/)
+- **AI (Embeddings):** Local text embeddings
 - **AI (Generative):** [Ollama](https://ollama.com/)
-- **Language:** [TypeScript](https://www.typescriptlang.org/)
 
 ### 🚀 Getting Started
 
@@ -84,12 +85,12 @@ Interested in running the project locally or contributing? Follow these steps:
 2.  **Install dependencies:**
 
     ```bash
-    npm install
+    uv sync
     ```
 
 3.  **Run the application in development mode:**
     ```bash
-    npm start
+    uv run python main.py
     ```
 
 ### 🤝 How to Contribute
