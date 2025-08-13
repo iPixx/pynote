@@ -213,3 +213,7 @@ claude_code/
 # exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 # refer to https://claude.ai/docs/claude-code-ignore-files
 
+# Test vault
+#  This is a test vault for the Pynote project. It contains test files and directories that are not part of the main project.
+#  It is recommended to ignore this vault in version control to avoid cluttering the repository with test data.
+test-vault/
