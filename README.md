@@ -37,11 +37,11 @@ This project is being built in phases. Our goal is to create a solid foundation 
 
 The focus of this phase is to build a usable, standalone markdown editor.
 
-- [ ] **Vault Management:** Select and open a local folder as your note vault.
-- [ ] **File Tree:** Display a list of all `.md` files in the vault.
+- [x] **Vault Management:** Select and open a local folder as your note vault.
+- [x] **File Tree:** Display a list of all `.md` files in the vault.
 - [ ] **Markdown Editor:** A robust editor with syntax highlighting (using CodeMirror).
-- [ ] **Live Preview:** Rendered view of the markdown file.
-- [ ] **File Operations:** Create, read, update, and save notes.
+- [x] **Live Preview:** Rendered view of the markdown file.
+- [x] **File Operations:** Create, read, update, and save notes.
 
 #### 🎯 **Phase 2: The Knowledge Weaver (AI-Powered Retrieval)**
 

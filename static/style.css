@@ -1,0 +1,372 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    height: 100vh;
+    background-color: #f5f5f5;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.header {
+    background-color: #fff;
+    border-bottom: 1px solid #ddd;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.header h1 {
+    color: #333;
+    font-size: 1.5rem;
+}
+
+.main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 250px;
+    background-color: #fff;
+    border-right: 1px solid #ddd;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+.sidebar h3 {
+    margin-bottom: 1rem;
+    color: #333;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+    font-variant: small-caps;
+    font-weight: 600;
+}
+
+.sidebar h3.drag-over {
+    background-color: #e8f5e8;
+    border: 2px dashed #28a745;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-bottom: 0.125rem;
+    word-break: break-all;
+    user-select: none;
+    transition: background-color 0.15s ease;
+}
+
+.file-item:hover {
+    background-color: #f0f0f0;
+}
+
+.file-item.active {
+    background-color: #007acc;
+    color: white;
+}
+
+.file-item.folder {
+    font-weight: 500;
+}
+
+.file-item.folder:hover {
+    background-color: #e8f4f8;
+}
+
+.file-item.expanded {
+    background-color: #f0f8ff;
+}
+
+.file-item.selected-folder {
+    background-color: #007acc;
+    color: white;
+    border-left: 3px solid #0056b3;
+}
+
+.file-item.selected-folder:hover {
+    background-color: #005a9e;
+}
+
+.file-item.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+}
+
+.file-item.drag-over {
+    background-color: #e8f5e8;
+    border: 2px dashed #28a745;
+}
+
+.file-item[draggable="true"] {
+    cursor: grab;
+}
+
+.file-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.file-icon {
+    margin-right: 0.5rem;
+    font-size: 14px;
+    min-width: 16px;
+    display: inline-block;
+}
+
+.file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+}
+
+.editor-header {
+    padding: 1rem;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #fafafa;
+}
+
+.editor-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.editor-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+.editor-pane,
+.preview-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-pane {
+    border-right: 1px solid #ddd;
+}
+
+#editor {
+    flex: 1;
+    border: none;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 0;
+}
+
+#markdown-editor {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 1rem 1rem 4rem 1.5rem;
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    background-color: #fafafa;
+    color: #333;
+    tab-size: 4;
+    -moz-tab-size: 4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+#markdown-editor:focus {
+    background-color: #fff;
+    box-shadow: inset 0 0 0 1px #007acc;
+}
+
+#markdown-editor::placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+#preview {
+    flex: 1;
+    padding: 1rem 1rem 1rem 1.5rem;
+    overflow-y: auto;
+    background-color: #fafafa;
+}
+
+#preview h1, #preview h2, #preview h3, #preview h4, #preview h5, #preview h6 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+#preview p {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+#preview code {
+    background-color: #f1f1f1;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', monospace;
+}
+
+#preview pre {
+    background-color: #f8f8f8;
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+#preview blockquote {
+    border-left: 4px solid #ddd;
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: #666;
+}
+
+.btn {
+    background-color: #007acc;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background-color: #005a9e;
+}
+
+.btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 12px;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+#file-tree {
+    margin-bottom: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.vault-dialog {
+    border: none;
+    border-radius: 8px;
+    padding: 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    max-width: 500px;
+    width: 90vw;
+}
+
+.vault-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.dialog-content {
+    padding: 2rem;
+}
+
+.dialog-content h2 {
+    margin-bottom: 0.5rem;
+    color: #333;
+    font-size: 1.25rem;
+}
+
+.dialog-content p {
+    margin-bottom: 1.5rem;
+    color: #666;
+    line-height: 1.5;
+}
+
+.input-group {
+    margin-bottom: 2rem;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.path-input-container {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.path-input-container input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    outline: none;
+}
+
+.path-input-container input:focus {
+    border-color: #007acc;
+    box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-primary {
+    background-color: #007acc;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #005a9e;
+}

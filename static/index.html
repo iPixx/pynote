@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pyNote</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1>pyNote</h1>
+            <button id="select-vault" class="btn">Select Vault</button>
+        </header>
+        
+        <div class="main">
+            <aside class="sidebar">
+                <h3>Files</h3>
+                <div id="file-tree"></div>
+                <button id="new-file" class="btn btn-small">New File</button>
+            </aside>
+            
+            <div class="editor-container">
+                <div class="editor-header">
+                    <span id="current-file">No file selected</span>
+                    <div class="editor-controls">
+                        <button id="save-file" class="btn btn-small" disabled>Save</button>
+                        <button id="delete-file" class="btn btn-small btn-danger" disabled>Delete</button>
+                    </div>
+                </div>
+                
+                <div class="editor-content">
+                    <div class="editor-pane">
+                        <div id="editor"></div>
+                    </div>
+                    <div class="preview-pane">
+                        <div id="preview">
+                            <p>Preview will appear here...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <dialog id="vault-dialog" class="vault-dialog">
+        <div class="dialog-content">
+            <h2>Select Vault</h2>
+            <p>Choose the folder containing your markdown notes:</p>
+            
+            <div class="input-group">
+                <label for="vault-path">Vault Path:</label>
+                <div class="path-input-container">
+                    <input type="text" id="vault-path" placeholder="Enter path to your notes folder..." />
+                    <button type="button" id="browse-vault" class="btn btn-small">Browse</button>
+                </div>
+            </div>
+            
+            <div class="dialog-actions">
+                <button type="button" id="cancel-vault" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirm-vault" class="btn btn-primary">Select Vault</button>
+            </div>
+        </div>
+    </dialog>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
