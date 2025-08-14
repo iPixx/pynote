@@ -68,8 +68,23 @@ This phase integrates a local Large Language Model (LLM) to turn pyNote into a c
 - **Package Manager:** [uv](https://docs.astral.sh/uv/)
 - **Linting/Formatting:** [ruff](https://docs.astral.sh/ruff/)
 - **Testing:** [pytest](https://docs.pytest.org/)
-- **AI (Embeddings):** Local text embeddings
+- **AI (Embeddings):** Local text embeddings via [sentence-transformers](https://www.sbert.net/)
 - **AI (Generative):** [Ollama](https://ollama.com/)
+
+### 🧠 Embedding Models
+
+pyNote supports multiple embedding models for the Knowledge Weaver feature. You can switch between models in the application interface to find the best fit for your use case:
+
+| Model | Description | Size | Context Length | Best For |
+|-------|-------------|------|----------------|----------|
+| **nomic-ai/nomic-embed-text-v1.5** | High-performance 768D model with extended context | 550MB | 8,192 tokens | Long documents, comprehensive understanding |
+| **all-mpnet-base-v2** *(default)* | Best overall performance and accuracy | 420MB | 384 tokens | General purpose, balanced performance |
+| **all-MiniLM-L6-v2** | Fastest and most lightweight option | 90MB | 256 tokens | Speed-critical applications, limited resources |
+| **all-MiniLM-L12-v2** | Good balance of speed and performance | 120MB | 256 tokens | Moderate performance needs |
+| **multi-qa-mpnet-base-dot-v1** | Optimized for question-answering tasks | 420MB | 512 tokens | Q&A, research notes |
+| **paraphrase-mpnet-base-v2** | Excellent for detecting similar content | 420MB | 512 tokens | Finding paraphrases, duplicate content |
+
+**Model Storage:** Embedding models are automatically downloaded and cached in `~/.cache/torch/sentence_transformers/` when first used. Switching models requires reindexing your vault to generate new embeddings.
 
 ### 🚀 Getting Started
 

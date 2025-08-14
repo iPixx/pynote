@@ -532,3 +532,46 @@ body {
     padding: 1rem;
     font-style: italic;
 }
+
+.model-selection {
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+}
+
+.model-selection h3 {
+    margin-bottom: 0.5rem;
+}
+
+.model-selector {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.model-selector:focus {
+    outline: none;
+    border-color: #007acc;
+    box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.model-info {
+    font-size: 0.75rem;
+    color: #666;
+    line-height: 1.3;
+}
+
+.model-info .model-desc {
+    margin-bottom: 0.25rem;
+}
+
+.model-info .model-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: #888;
+}

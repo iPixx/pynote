@@ -15,12 +15,75 @@ CORS(app)
 vault_path = None
 embedding_model = None
 vector_store = {}
+current_model_name = "all-mpnet-base-v2"
+
+# Popular embedding models available through sentence-transformers
+AVAILABLE_MODELS = {
+    "nomic-ai/nomic-embed-text-v1.5": {
+        "name": "nomic-ai/nomic-embed-text-v1.5",
+        "description": "High-performance 768D model with 8192 context length",
+        "size": "550MB",
+        "max_seq_length": 8192
+    },
+    "all-mpnet-base-v2": {
+        "name": "all-mpnet-base-v2",
+        "description": "Best overall performance, 768 dimensions",
+        "size": "420MB",
+        "max_seq_length": 384
+    },
+    "all-MiniLM-L6-v2": {
+        "name": "all-MiniLM-L6-v2", 
+        "description": "Fastest and smallest, 384 dimensions",
+        "size": "90MB",
+        "max_seq_length": 256
+    },
+    "all-MiniLM-L12-v2": {
+        "name": "all-MiniLM-L12-v2",
+        "description": "Good balance of speed and performance, 384 dimensions", 
+        "size": "120MB",
+        "max_seq_length": 256
+    },
+    "multi-qa-mpnet-base-dot-v1": {
+        "name": "multi-qa-mpnet-base-dot-v1",
+        "description": "Optimized for question-answering, 768 dimensions",
+        "size": "420MB", 
+        "max_seq_length": 512
+    },
+    "paraphrase-mpnet-base-v2": {
+        "name": "paraphrase-mpnet-base-v2",
+        "description": "Good for paraphrase detection, 768 dimensions",
+        "size": "420MB",
+        "max_seq_length": 512
+    }
+}
 
 
 def initialize_embedding_model():
     global embedding_model
     if embedding_model is None:
-        embedding_model = SentenceTransformer("all-mpnet-base-v2")
+        try:
+            print(f"Loading embedding model: {current_model_name}")
+            # Some models require trust_remote_code=True
+            if current_model_name == "nomic-ai/nomic-embed-text-v1.5":
+                print("Using trust_remote_code=True for nomic model")
+                embedding_model = SentenceTransformer(current_model_name, trust_remote_code=True)
+            else:
+                embedding_model = SentenceTransformer(current_model_name)
+            print(f"Successfully loaded model: {current_model_name}")
+        except Exception as e:
+            print(f"Error loading embedding model {current_model_name}: {str(e)}")
+            print(f"Error type: {type(e).__name__}")
+            # Fall back to default model if current model fails
+            if current_model_name != "all-mpnet-base-v2":
+                print("Falling back to default model: all-mpnet-base-v2")
+                try:
+                    embedding_model = SentenceTransformer("all-mpnet-base-v2")
+                    print("Successfully loaded fallback model")
+                except Exception as fallback_error:
+                    print(f"Error loading fallback model: {str(fallback_error)}")
+                    raise fallback_error
+            else:
+                raise e
     return embedding_model
 
 
@@ -98,23 +161,40 @@ def update_file_embeddings(file_path, content):
 
 def find_similar_content(query_text, current_file_path=None, limit=5):
     if not vector_store:
+        print("Vector store is empty")
         return []
 
-    model = initialize_embedding_model()
-    query_embedding = model.encode([query_text])[0]
+    try:
+        print(f"Initializing embedding model for similarity search...")
+        model = initialize_embedding_model()
+        print(f"Encoding query text...")
+        query_embedding = model.encode([query_text])[0]
+        print(f"Query embedding shape: {query_embedding.shape}")
 
-    similarities = []
-    for key, embedding in vector_store.items():
-        file_path = key.split("::")[0]
-        if current_file_path and file_path == current_file_path:
-            continue  # Skip current file
+        similarities = []
+        print(f"Comparing against {len(vector_store)} stored embeddings...")
+        for key, embedding in vector_store.items():
+            file_path = key.split("::")[0]
+            if current_file_path and file_path == current_file_path:
+                continue  # Skip current file
 
-        similarity = cosine_similarity([query_embedding], [embedding])[0][0]
-        similarities.append((key, similarity, file_path))
+            try:
+                similarity = cosine_similarity([query_embedding], [embedding])[0][0]
+                similarities.append((key, similarity, file_path))
+            except Exception as sim_error:
+                print(f"Error computing similarity for {key}: {str(sim_error)}")
+                continue
 
-    # Sort by similarity and return top results
-    similarities.sort(key=lambda x: x[1], reverse=True)
-    return similarities[:limit]
+        # Sort by similarity and return top results
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        print(f"Computed {len(similarities)} similarities, returning top {limit}")
+        return similarities[:limit]
+    except Exception as e:
+        print(f"Error in find_similar_content: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 @app.route("/")
@@ -308,7 +388,9 @@ def get_similar_content():
         return jsonify({"similar": []})
 
     try:
+        print(f"Finding similar content for query: {query[:50]}...")
         similarities = find_similar_content(query, current_file, limit)
+        print(f"Found {len(similarities)} similar items")
 
         # Get snippet context for each similar item
         results = []
@@ -335,11 +417,17 @@ def get_similar_content():
                                     "paragraph_index": paragraph_index,
                                 }
                             )
-                except Exception:
+                except Exception as snippet_error:
+                    print(f"Error processing snippet for {file_path}: {str(snippet_error)}")
                     continue
 
+        print(f"Returning {len(results)} similar results")
         return jsonify({"similar": results})
     except Exception as e:
+        print(f"Error in get_similar_content: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -366,6 +454,55 @@ def reindex_vault():
         return jsonify({"success": True, "processed": processed})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/models", methods=["GET"])
+def get_available_models():
+    models = list(AVAILABLE_MODELS.values())
+    return jsonify({
+        "models": models,
+        "current_model": current_model_name
+    })
+
+
+@app.route("/api/models/current", methods=["POST"])
+def set_current_model():
+    global current_model_name, embedding_model
+    
+    data = request.get_json()
+    model_name = data.get("model_name")
+    
+    if not model_name or model_name not in AVAILABLE_MODELS:
+        return jsonify({"error": "Invalid model name"}), 400
+    
+    try:
+        print(f"Switching from {current_model_name} to {model_name}")
+        
+        # Test if the new model can be loaded before switching
+        old_model_name = current_model_name
+        old_embedding_model = embedding_model
+        
+        current_model_name = model_name
+        embedding_model = None  # Reset to force reload with new model
+        
+        # Try to initialize the new model
+        test_model = initialize_embedding_model()
+        print(f"Successfully tested new model: {model_name}")
+        
+        return jsonify({
+            "success": True, 
+            "current_model": current_model_name,
+            "message": f"Switched to {model_name}. Reindex recommended."
+        })
+    except Exception as e:
+        print(f"Error switching to model {model_name}: {str(e)}")
+        # Revert to old model on error
+        current_model_name = old_model_name
+        embedding_model = old_embedding_model
+        
+        return jsonify({
+            "error": f"Failed to switch to {model_name}: {str(e)}"
+        }), 500
 
 
 if __name__ == "__main__":

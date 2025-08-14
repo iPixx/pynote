@@ -7,12 +7,15 @@ class PyNote {
         this.unsavedChanges = false;
         this.editor = null;
         this.similarityTimeout = null;
+        this.availableModels = [];
+        this.currentModel = null;
         this.init();
     }
 
     init() {
         this.bindEvents();
         this.initEditor();
+        this.loadAvailableModels();
         this.updateUI();
     }
 
@@ -109,6 +112,7 @@ class PyNote {
         document.getElementById('save-file').addEventListener('click', () => this.saveFile());
         document.getElementById('delete-file').addEventListener('click', () => this.deleteFile());
         document.getElementById('reindex').addEventListener('click', () => this.reindexVault());
+        document.getElementById('model-selector').addEventListener('change', (e) => this.changeModel(e.target.value));
         
         document.getElementById('cancel-vault').addEventListener('click', () => this.closeVaultDialog());
         document.getElementById('confirm-vault').addEventListener('click', () => this.selectVault());
@@ -806,6 +810,89 @@ class PyNote {
         } finally {
             button.textContent = originalText;
             button.disabled = false;
+        }
+    }
+
+    async loadAvailableModels() {
+        try {
+            const response = await fetch('/api/models');
+            const result = await response.json();
+            
+            this.availableModels = result.models;
+            this.currentModel = result.current_model;
+            this.updateModelSelector();
+        } catch (error) {
+            console.error('Error loading available models:', error);
+        }
+    }
+
+    updateModelSelector() {
+        const selector = document.getElementById('model-selector');
+        selector.innerHTML = '';
+        
+        this.availableModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            option.selected = model.name === this.currentModel;
+            selector.appendChild(option);
+        });
+        
+        this.updateModelInfo();
+    }
+
+    updateModelInfo() {
+        const infoDiv = document.getElementById('model-info');
+        const currentModelData = this.availableModels.find(m => m.name === this.currentModel);
+        
+        if (currentModelData) {
+            infoDiv.innerHTML = `
+                <div class="model-desc">${currentModelData.description}</div>
+                <div class="model-meta">
+                    <span>Size: ${currentModelData.size}</span>
+                    <span>Max: ${currentModelData.max_seq_length}</span>
+                </div>
+            `;
+        } else {
+            infoDiv.innerHTML = '';
+        }
+    }
+
+    async changeModel(modelName) {
+        if (!modelName || modelName === this.currentModel) return;
+        
+        const selector = document.getElementById('model-selector');
+        selector.disabled = true;
+        
+        try {
+            const response = await fetch('/api/models/current', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model_name: modelName })
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                this.currentModel = modelName;
+                this.updateModelInfo();
+                
+                // Show notification about reindexing
+                if (this.vaultName) {
+                    const shouldReindex = confirm(`Model changed to ${modelName}. Would you like to reindex the vault now to use the new embeddings?`);
+                    if (shouldReindex) {
+                        await this.reindexVault();
+                    }
+                }
+            } else {
+                alert('Error changing model: ' + result.error);
+                // Revert selection
+                selector.value = this.currentModel;
+            }
+        } catch (error) {
+            alert('Error changing model: ' + error.message);
+            selector.value = this.currentModel;
+        } finally {
+            selector.disabled = false;
         }
     }
 }
