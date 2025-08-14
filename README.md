@@ -52,14 +52,14 @@ In this phase, we make the application "smart" by helping the user discover conn
 - [x] **Real-time Suggestions:** As the user types, generate an embedding for the current text and find the most semantically similar notes from the index.
 - [x] **Suggestion UI:** Display a list of related notes in a sidebar panel.
 
-#### 🎯 **Phase 3: The Creative Assistant (Generative AI)**
+#### ✅ **Phase 3: The Creative Assistant (Generative AI)**
 
 This phase integrates a local Large Language Model (LLM) to turn pyNote into a creative partner. This requires the user to have [Ollama](https://ollama.com/) installed and running.
 
-- [ ] **Ollama Integration:** Connect to the local Ollama API (`http://localhost:11434`).
-- [ ] **Context-Aware Prompting (RAG):** Implement Retrieval-Augmented Generation. When a user asks to expand text, first find relevant notes (using Phase 2's system) and feed them to the LLM as context.
-- [ ] **Text Generation UI:** Add context-menu actions like "Expand on this," "Summarize selection," or "Rephrase in a different tone."
-- [ ] **Streaming Responses:** Display the LLM's generated text token-by-token for a better user experience.
+- [x] **Ollama Integration:** Connect to the local Ollama API (`http://localhost:11434`).
+- [x] **Context-Aware Prompting (RAG):** Implement Retrieval-Augmented Generation. When a user asks to expand text, first find relevant notes (using Phase 2's system) and feed them to the LLM as context.
+- [x] **Text Generation UI:** Add context-menu actions like "Expand on this," "Summarize selection," or "Rephrase in a different tone."
+- [x] **Streaming Responses:** Display the LLM's generated text token-by-token for a better user experience.
 
 ### 🛠️ Technology Stack
 

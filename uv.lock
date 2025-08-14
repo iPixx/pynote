@@ -536,6 +536,7 @@ dependencies = [
     { name = "flask-cors" },
     { name = "markdown" },
     { name = "numpy" },
+    { name = "requests" },
     { name = "scikit-learn" },
     { name = "sentence-transformers" },
 ]
@@ -559,6 +560,7 @@ requires-dist = [
     { name = "markdown", specifier = ">=3.5.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "scikit-learn", specifier = ">=1.3.0" },
     { name = "sentence-transformers", specifier = ">=2.2.0" },

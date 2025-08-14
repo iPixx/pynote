@@ -9,6 +9,10 @@ class PyNote {
         this.similarityTimeout = null;
         this.availableModels = [];
         this.currentModel = null;
+        this.aiStatus = null;
+        this.aiModels = [];
+        this.selectedText = '';
+        this.contextMenu = null;
         this.init();
     }
 
@@ -16,6 +20,7 @@ class PyNote {
         this.bindEvents();
         this.initEditor();
         this.loadAvailableModels();
+        this.initAI();
         this.updateUI();
     }
 
@@ -115,6 +120,17 @@ class PyNote {
         document.getElementById('reindex').addEventListener('click', () => this.reindexVault());
         document.getElementById('model-selector').addEventListener('change', (e) => this.changeModel(e.target.value));
         
+        // AI Assistant events
+        document.getElementById('ai-generate').addEventListener('click', () => this.generateAIResponse());
+        document.getElementById('ai-prompt').addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                this.generateAIResponse();
+            }
+        });
+        document.getElementById('ai-save-prompt').addEventListener('click', () => this.saveSystemPrompt());
+        document.getElementById('ai-reset-prompt').addEventListener('click', () => this.resetSystemPrompt());
+        
         document.getElementById('cancel-vault').addEventListener('click', () => this.closeVaultDialog());
         document.getElementById('confirm-vault').addEventListener('click', () => this.selectVault());
         document.getElementById('browse-vault').addEventListener('click', () => this.browseVault());
@@ -122,6 +138,20 @@ class PyNote {
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.file-item') && !e.target.closest('.file-controls')) {
                 this.unselectFolder();
+            }
+            
+            // Hide context menu on click outside
+            if (!e.target.closest('.context-menu')) {
+                this.hideContextMenu();
+            }
+        });
+        
+        // Context menu events
+        document.addEventListener('contextmenu', (e) => this.handleContextMenu(e));
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.context-menu-item')) {
+                const action = e.target.closest('.context-menu-item').dataset.action;
+                this.handleContextAction(action);
             }
         });
 
@@ -988,6 +1018,341 @@ class PyNote {
             selector.value = this.currentModel;
         } finally {
             selector.disabled = false;
+        }
+    }
+
+    // AI Assistant Methods
+    async initAI() {
+        this.contextMenu = document.getElementById('context-menu');
+        await this.checkAIStatus();
+        await this.loadSystemPrompt();
+    }
+
+    async checkAIStatus() {
+        try {
+            const response = await fetch('/api/ai/status');
+            const status = await response.json();
+            this.aiStatus = status;
+            this.aiModels = status.available_models;
+            this.updateAIStatus();
+            this.updateAIModelSelector();
+        } catch (error) {
+            console.error('Error checking AI status:', error);
+            this.updateAIStatus(false);
+        }
+    }
+
+    updateAIStatus(isOnline = null) {
+        const statusElement = document.getElementById('ai-status');
+        const indicator = statusElement.querySelector('.status-indicator');
+        const text = statusElement.querySelector('.status-text');
+        
+        const online = isOnline !== null ? isOnline : this.aiStatus?.ollama_available;
+        
+        if (online) {
+            statusElement.className = 'ai-status online';
+            indicator.textContent = '🟢';
+            indicator.className = 'status-indicator online';
+            text.textContent = 'Ollama Connected';
+        } else {
+            statusElement.className = 'ai-status offline';
+            indicator.textContent = '🔴';
+            indicator.className = 'status-indicator offline';
+            text.textContent = 'Ollama Offline';
+        }
+    }
+
+    updateAIModelSelector() {
+        const selector = document.getElementById('ai-model-selector');
+        selector.innerHTML = '';
+        
+        if (this.aiModels.length > 0) {
+            this.aiModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                if (model === this.aiStatus?.default_model) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        } else {
+            const option = document.createElement('option');
+            option.textContent = 'No models available';
+            option.disabled = true;
+            selector.appendChild(option);
+        }
+    }
+
+    async generateAIResponse(useStreaming = true) {
+        const promptElement = document.getElementById('ai-prompt');
+        const generateBtn = document.getElementById('ai-generate');
+        const responseContent = document.querySelector('.ai-response-content');
+        const responseMeta = document.querySelector('.ai-response-meta');
+        const useContext = document.getElementById('ai-use-context').checked;
+        const model = document.getElementById('ai-model-selector').value;
+        
+        const prompt = promptElement.value.trim();
+        if (!prompt) return;
+        
+        // Disable UI
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating...';
+        
+        // Clear previous response
+        responseContent.textContent = '';
+        responseContent.className = 'ai-response-content loading';
+        responseMeta.textContent = '';
+        
+        if (useStreaming) {
+            try {
+                responseContent.textContent = 'Thinking...';
+                responseContent.className = 'ai-response-content streaming';
+                
+                const response = await fetch('/api/ai/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, use_context: useContext, model })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to generate response');
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let contextCount = 0;
+                
+                responseContent.textContent = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.type === 'context') {
+                                    contextCount = data.items;
+                                } else if (data.type === 'token') {
+                                    responseContent.textContent += data.content;
+                                } else if (data.type === 'done') {
+                                    responseContent.className = 'ai-response-content';
+                                    responseMeta.textContent = contextCount > 0 ? 
+                                        `Used context from ${contextCount} notes` : 'No context used';
+                                } else if (data.type === 'error') {
+                                    throw new Error(data.message);
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                responseContent.textContent = `Error: ${error.message}`;
+                responseContent.className = 'ai-response-content error';
+                responseMeta.textContent = '';
+            }
+        } else {
+            // Fallback to non-streaming
+            try {
+                responseContent.textContent = 'Generating response...';
+                
+                const response = await fetch('/api/ai/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, use_context: useContext, model })
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                
+                responseContent.textContent = result.response;
+                responseContent.className = 'ai-response-content';
+                responseMeta.textContent = result.context_used > 0 ? 
+                    `Used context from ${result.context_used} notes` : 'No context used';
+                    
+            } catch (error) {
+                responseContent.textContent = `Error: ${error.message}`;
+                responseContent.className = 'ai-response-content error';
+                responseMeta.textContent = '';
+            }
+        }
+        
+        // Re-enable UI
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate';
+    }
+
+    handleContextMenu(e) {
+        if (!this.codeMirror) return;
+        
+        // Check if right-click is inside editor
+        const editorElement = this.codeMirror.getWrapperElement();
+        if (!editorElement.contains(e.target)) return;
+        
+        // Get selected text
+        const selectedText = this.codeMirror.getSelection();
+        if (!selectedText.trim()) return;
+        
+        e.preventDefault();
+        this.selectedText = selectedText;
+        this.showContextMenu(e.pageX, e.pageY);
+    }
+
+    showContextMenu(x, y) {
+        if (!this.contextMenu) return;
+        
+        this.contextMenu.style.left = x + 'px';
+        this.contextMenu.style.top = y + 'px';
+        this.contextMenu.style.display = 'block';
+        
+        // Adjust position if menu goes off screen
+        const rect = this.contextMenu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+            this.contextMenu.style.left = (x - rect.width) + 'px';
+        }
+        if (rect.bottom > window.innerHeight) {
+            this.contextMenu.style.top = (y - rect.height) + 'px';
+        }
+    }
+
+    hideContextMenu() {
+        if (this.contextMenu) {
+            this.contextMenu.style.display = 'none';
+        }
+    }
+
+    async handleContextAction(action) {
+        this.hideContextMenu();
+        
+        if (!this.selectedText.trim()) return;
+        
+        const model = document.getElementById('ai-model-selector').value;
+        const context = this.editor ? this.editor.getValue() : '';
+        
+        try {
+            let endpoint, payload;
+            
+            switch (action) {
+                case 'expand':
+                    endpoint = '/api/ai/expand';
+                    payload = { text: this.selectedText, context, model };
+                    break;
+                case 'summarize':
+                    endpoint = '/api/ai/summarize';
+                    payload = { text: this.selectedText, model };
+                    break;
+                case 'rephrase-professional':
+                    endpoint = '/api/ai/rephrase';
+                    payload = { text: this.selectedText, tone: 'professional', model };
+                    break;
+                case 'rephrase-casual':
+                    endpoint = '/api/ai/rephrase';
+                    payload = { text: this.selectedText, tone: 'casual', model };
+                    break;
+                case 'rephrase-academic':
+                    endpoint = '/api/ai/rephrase';
+                    payload = { text: this.selectedText, tone: 'academic', model };
+                    break;
+                default:
+                    return;
+            }
+            
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            
+            // Get the result text based on action
+            let resultText;
+            if (action === 'expand') {
+                resultText = result.expanded_text;
+            } else if (action === 'summarize') {
+                resultText = result.summary;
+            } else if (action.startsWith('rephrase')) {
+                resultText = result.rephrased_text;
+            }
+            
+            // Replace selected text with result
+            if (this.codeMirror && resultText) {
+                this.codeMirror.replaceSelection(resultText);
+                this.unsavedChanges = true;
+                this.updateUI();
+            }
+            
+        } catch (error) {
+            alert(`Error processing text: ${error.message}`);
+        }
+    }
+
+    async loadSystemPrompt() {
+        try {
+            const response = await fetch('/api/ai/system-prompt');
+            const data = await response.json();
+            
+            document.getElementById('ai-system-prompt').value = data.system_prompt;
+        } catch (error) {
+            console.error('Error loading system prompt:', error);
+        }
+    }
+
+    async saveSystemPrompt() {
+        const promptElement = document.getElementById('ai-system-prompt');
+        const prompt = promptElement.value.trim();
+        
+        try {
+            const response = await fetch('/api/ai/system-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                alert('System prompt saved successfully!');
+            } else {
+                alert('Error saving system prompt');
+            }
+        } catch (error) {
+            alert(`Error saving system prompt: ${error.message}`);
+        }
+    }
+
+    async resetSystemPrompt() {
+        try {
+            const response = await fetch('/api/ai/system-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: '' })
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('ai-system-prompt').value = result.system_prompt;
+                alert('System prompt reset to default!');
+            } else {
+                alert('Error resetting system prompt');
+            }
+        } catch (error) {
+            alert(`Error resetting system prompt: ${error.message}`);
         }
     }
 }

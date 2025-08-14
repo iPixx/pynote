@@ -2,12 +2,13 @@
 import os
 import json
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import markdown
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -17,45 +18,153 @@ embedding_model = None
 vector_store = {}
 current_model_name = "all-mpnet-base-v2"
 
+# Ollama configuration
+OLLAMA_BASE_URL = "http://localhost:11434"
+DEFAULT_LLM_MODEL = "llama3.2"
+DEFAULT_SYSTEM_PROMPT = (
+    "Rispondi sempre in italiano. Fornisci risposte chiare, utili e ben strutturate."
+)
+current_system_prompt = DEFAULT_SYSTEM_PROMPT
+
 # Popular embedding models available through sentence-transformers
 AVAILABLE_MODELS = {
     "nomic-ai/nomic-embed-text-v1.5": {
         "name": "nomic-ai/nomic-embed-text-v1.5",
         "description": "High-performance 768D model with 8192 context length",
         "size": "550MB",
-        "max_seq_length": 8192
+        "max_seq_length": 8192,
     },
     "all-mpnet-base-v2": {
         "name": "all-mpnet-base-v2",
         "description": "Best overall performance, 768 dimensions",
         "size": "420MB",
-        "max_seq_length": 384
+        "max_seq_length": 384,
     },
     "all-MiniLM-L6-v2": {
-        "name": "all-MiniLM-L6-v2", 
+        "name": "all-MiniLM-L6-v2",
         "description": "Fastest and smallest, 384 dimensions",
         "size": "90MB",
-        "max_seq_length": 256
+        "max_seq_length": 256,
     },
     "all-MiniLM-L12-v2": {
         "name": "all-MiniLM-L12-v2",
-        "description": "Good balance of speed and performance, 384 dimensions", 
+        "description": "Good balance of speed and performance, 384 dimensions",
         "size": "120MB",
-        "max_seq_length": 256
+        "max_seq_length": 256,
     },
     "multi-qa-mpnet-base-dot-v1": {
         "name": "multi-qa-mpnet-base-dot-v1",
         "description": "Optimized for question-answering, 768 dimensions",
-        "size": "420MB", 
-        "max_seq_length": 512
+        "size": "420MB",
+        "max_seq_length": 512,
     },
     "paraphrase-mpnet-base-v2": {
         "name": "paraphrase-mpnet-base-v2",
         "description": "Good for paraphrase detection, 768 dimensions",
         "size": "420MB",
-        "max_seq_length": 512
-    }
+        "max_seq_length": 512,
+    },
 }
+
+
+# Ollama integration functions
+def check_ollama_connection():
+    """Check if Ollama is running and accessible"""
+    try:
+        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
+def get_ollama_models():
+    """Get list of available models from Ollama"""
+    try:
+        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return [model["name"] for model in data.get("models", [])]
+        return []
+    except requests.exceptions.RequestException:
+        return []
+
+
+def get_relevant_context(query_text, max_results=3):
+    """Get relevant context from existing notes using embeddings"""
+    if not vector_store:
+        return []
+
+    try:
+        similarities = find_similar_content(query_text, None, max_results)
+        context_items = []
+
+        for key, similarity, file_path in similarities:
+            if similarity > 0.4:  # Only include relevant content
+                try:
+                    full_path = vault_path / file_path
+                    if full_path.exists():
+                        content = full_path.read_text(encoding="utf-8")
+                        paragraphs = split_into_paragraphs(content)
+                        paragraph_index = int(key.split("::")[1])
+
+                        if paragraph_index < len(paragraphs):
+                            context_items.append(
+                                {
+                                    "content": paragraphs[paragraph_index],
+                                    "file": file_path,
+                                    "similarity": similarity,
+                                }
+                            )
+                except Exception:
+                    continue
+
+        return context_items
+    except Exception:
+        return []
+
+
+def generate_ollama_response(
+    prompt, context_items=None, model=DEFAULT_LLM_MODEL, stream=True, system_prompt=None
+):
+    """Generate response from Ollama with optional context and system prompt"""
+    if not check_ollama_connection():
+        raise Exception(
+            "Ollama is not running. Please start Ollama and ensure it's accessible at http://localhost:11434"
+        )
+
+    # Build context-aware prompt
+    user_message = prompt
+    if context_items:
+        context_text = "\n\nRelevant context from your notes:\n"
+        for i, item in enumerate(context_items, 1):
+            context_text += f"\n{i}. From '{item['file']}':\n{item['content']}\n"
+
+        user_message = f"{context_text}\n\nUser request: {prompt}\n\nPlease provide a helpful response based on the context above:"
+
+    # Use system prompt if provided, otherwise use current global setting
+    if system_prompt is None:
+        system_prompt = current_system_prompt
+
+    try:
+        # Use the chat API for better system prompt support
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+
+        payload = {"model": model, "messages": messages, "stream": stream}
+
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/api/chat", json=payload, stream=stream, timeout=60
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"Ollama API error: {response.status_code}")
+
+        return response
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error communicating with Ollama: {str(e)}")
 
 
 def initialize_embedding_model():
@@ -66,7 +175,9 @@ def initialize_embedding_model():
             # Some models require trust_remote_code=True
             if current_model_name == "nomic-ai/nomic-embed-text-v1.5":
                 print("Using trust_remote_code=True for nomic model")
-                embedding_model = SentenceTransformer(current_model_name, trust_remote_code=True)
+                embedding_model = SentenceTransformer(
+                    current_model_name, trust_remote_code=True
+                )
             else:
                 embedding_model = SentenceTransformer(current_model_name)
             print(f"Successfully loaded model: {current_model_name}")
@@ -193,6 +304,7 @@ def find_similar_content(query_text, current_file_path=None, limit=5):
         print(f"Error in find_similar_content: {str(e)}")
         print(f"Error type: {type(e).__name__}")
         import traceback
+
         traceback.print_exc()
         return []
 
@@ -234,7 +346,7 @@ def get_files():
             if dir_path.is_dir():
                 relative_path = dir_path.relative_to(vault_path)
                 parts = relative_path.parts
-                
+
                 current = tree
                 for part in parts:
                     if part not in current:
@@ -341,14 +453,16 @@ def delete_file(file_path):
 
     try:
         full_path.unlink()
-        
+
         # Remove embeddings for deleted file
         global vector_store
-        keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{file_path}::")]
+        keys_to_remove = [
+            k for k in vector_store.keys() if k.startswith(f"{file_path}::")
+        ]
         for key in keys_to_remove:
             del vector_store[key]
         save_vector_store()
-        
+
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -357,7 +471,7 @@ def delete_file(file_path):
 @app.route("/api/delete", methods=["POST"])
 def delete_file_or_folder():
     global vector_store
-    
+
     if not vault_path:
         return jsonify({"error": "No vault selected"}), 400
 
@@ -374,24 +488,29 @@ def delete_file_or_folder():
     try:
         if full_path.is_file():
             full_path.unlink()
-            
+
             # Remove embeddings for deleted file
-            if path.endswith('.md'):
-                keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{path}::")]
+            if path.endswith(".md"):
+                keys_to_remove = [
+                    k for k in vector_store.keys() if k.startswith(f"{path}::")
+                ]
                 for key in keys_to_remove:
                     del vector_store[key]
                 save_vector_store()
         else:
             # Delete folder and all its contents
             import shutil
+
             shutil.rmtree(full_path)
-            
+
             # Remove embeddings for all files in the deleted folder
-            keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{path}/")]
+            keys_to_remove = [
+                k for k in vector_store.keys() if k.startswith(f"{path}/")
+            ]
             for key in keys_to_remove:
                 del vector_store[key]
             save_vector_store()
-        
+
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -429,7 +548,7 @@ def move_file():
 @app.route("/api/rename", methods=["POST"])
 def rename_file_or_folder():
     global vector_store
-    
+
     if not vault_path:
         return jsonify({"error": "No vault selected"}), 400
 
@@ -458,14 +577,16 @@ def rename_file_or_folder():
 
     try:
         old_full_path.rename(new_full_path)
-        
+
         # Update embeddings if it's a file
-        if old_full_path.is_file() and old_path.endswith('.md'):
+        if old_full_path.is_file() and old_path.endswith(".md"):
             # Remove old embeddings
-            keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{old_path}::")]
+            keys_to_remove = [
+                k for k in vector_store.keys() if k.startswith(f"{old_path}::")
+            ]
             for key in keys_to_remove:
                 del vector_store[key]
-            
+
             # Add new embeddings if file has content
             if new_full_path.exists():
                 try:
@@ -473,7 +594,7 @@ def rename_file_or_folder():
                     update_file_embeddings(new_path, content)
                 except Exception:
                     pass
-        
+
         return jsonify({"success": True, "new_path": new_path})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -565,7 +686,9 @@ def get_similar_content():
                                 }
                             )
                 except Exception as snippet_error:
-                    print(f"Error processing snippet for {file_path}: {str(snippet_error)}")
+                    print(
+                        f"Error processing snippet for {file_path}: {str(snippet_error)}"
+                    )
                     continue
 
         print(f"Returning {len(results)} similar results")
@@ -574,6 +697,7 @@ def get_similar_content():
         print(f"Error in get_similar_content: {str(e)}")
         print(f"Error type: {type(e).__name__}")
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
@@ -606,50 +730,356 @@ def reindex_vault():
 @app.route("/api/models", methods=["GET"])
 def get_available_models():
     models = list(AVAILABLE_MODELS.values())
-    return jsonify({
-        "models": models,
-        "current_model": current_model_name
-    })
+    return jsonify({"models": models, "current_model": current_model_name})
 
 
 @app.route("/api/models/current", methods=["POST"])
 def set_current_model():
     global current_model_name, embedding_model
-    
+
     data = request.get_json()
     model_name = data.get("model_name")
-    
+
     if not model_name or model_name not in AVAILABLE_MODELS:
         return jsonify({"error": "Invalid model name"}), 400
-    
+
     try:
         print(f"Switching from {current_model_name} to {model_name}")
-        
+
         # Test if the new model can be loaded before switching
         old_model_name = current_model_name
         old_embedding_model = embedding_model
-        
+
         current_model_name = model_name
         embedding_model = None  # Reset to force reload with new model
-        
+
         # Try to initialize the new model
         initialize_embedding_model()
         print(f"Successfully tested new model: {model_name}")
-        
-        return jsonify({
-            "success": True, 
-            "current_model": current_model_name,
-            "message": f"Switched to {model_name}. Reindex recommended."
-        })
+
+        return jsonify(
+            {
+                "success": True,
+                "current_model": current_model_name,
+                "message": f"Switched to {model_name}. Reindex recommended.",
+            }
+        )
     except Exception as e:
         print(f"Error switching to model {model_name}: {str(e)}")
         # Revert to old model on error
         current_model_name = old_model_name
         embedding_model = old_embedding_model
-        
-        return jsonify({
-            "error": f"Failed to switch to {model_name}: {str(e)}"
-        }), 500
+
+        return jsonify({"error": f"Failed to switch to {model_name}: {str(e)}"}), 500
+
+
+# AI Assistant endpoints (Phase 3)
+@app.route("/api/ai/status", methods=["GET"])
+def get_ai_status():
+    """Check AI assistant availability"""
+    ollama_available = check_ollama_connection()
+    models = get_ollama_models() if ollama_available else []
+
+    return jsonify(
+        {
+            "ollama_available": ollama_available,
+            "available_models": models,
+            "default_model": DEFAULT_LLM_MODEL,
+            "vault_indexed": len(vector_store) > 0,
+        }
+    )
+
+
+@app.route("/api/ai/generate", methods=["POST"])
+def generate_ai_response():
+    """Generate AI response with RAG"""
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    prompt = data.get("prompt", "")
+    use_context = data.get("use_context", True)
+    model = data.get("model", DEFAULT_LLM_MODEL)
+
+    if not prompt.strip():
+        return jsonify({"error": "Prompt required"}), 400
+
+    try:
+        # Get relevant context if requested
+        context_items = []
+        if use_context and vector_store:
+            context_items = get_relevant_context(prompt)
+
+        # Generate response
+        response = generate_ollama_response(prompt, context_items, model, stream=False)
+
+        if response.status_code == 200:
+            result_text = ""
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        json_response = json.loads(line.decode("utf-8"))
+                        # Handle chat API response format
+                        if (
+                            "message" in json_response
+                            and "content" in json_response["message"]
+                        ):
+                            result_text += json_response["message"]["content"]
+                        elif "response" in json_response:  # Fallback for generate API
+                            result_text += json_response["response"]
+                        if json_response.get("done", False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+            return jsonify(
+                {
+                    "response": result_text,
+                    "context_used": len(context_items),
+                    "context_items": [
+                        {"file": item["file"], "similarity": item["similarity"]}
+                        for item in context_items
+                    ],
+                }
+            )
+        else:
+            return jsonify({"error": "Failed to generate response"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/stream", methods=["POST"])
+def stream_ai_response():
+    """Stream AI response with RAG"""
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    prompt = data.get("prompt", "")
+    use_context = data.get("use_context", True)
+    model = data.get("model", DEFAULT_LLM_MODEL)
+
+    if not prompt.strip():
+        return jsonify({"error": "Prompt required"}), 400
+
+    def generate():
+        try:
+            # Get relevant context if requested
+            context_items = []
+            if use_context and vector_store:
+                context_items = get_relevant_context(prompt)
+
+            # Send context information first
+            yield f"data: {json.dumps({'type': 'context', 'items': len(context_items)})}\n\n"
+
+            # Generate response
+            response = generate_ollama_response(
+                prompt, context_items, model, stream=True
+            )
+
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            json_response = json.loads(line.decode("utf-8"))
+                            # Handle chat API response format
+                            if (
+                                "message" in json_response
+                                and "content" in json_response["message"]
+                            ):
+                                yield f"data: {json.dumps({'type': 'token', 'content': json_response['message']['content']})}\n\n"
+                            elif (
+                                "response" in json_response
+                            ):  # Fallback for generate API
+                                yield f"data: {json.dumps({'type': 'token', 'content': json_response['response']})}\n\n"
+                            if json_response.get("done", False):
+                                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                                break
+                        except json.JSONDecodeError:
+                            continue
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to generate response'})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/api/ai/expand", methods=["POST"])
+def expand_text():
+    """Expand selected text using AI"""
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    text = data.get("text", "")
+    context = data.get("context", "")  # Full document context
+    model = data.get("model", DEFAULT_LLM_MODEL)
+
+    if not text.strip():
+        return jsonify({"error": "Text required"}), 400
+
+    try:
+        # Get relevant context from vault
+        context_items = (
+            get_relevant_context(text + " " + context) if vector_store else []
+        )
+
+        # Create expansion prompt
+        prompt = f"Please expand on this text in a helpful and coherent way: '{text}'"
+        if context:
+            prompt += f"\n\nThis text is part of a larger document. Here's some context:\n{context[:500]}..."
+
+        response = generate_ollama_response(prompt, context_items, model, stream=False)
+
+        if response.status_code == 200:
+            result_text = ""
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        json_response = json.loads(line.decode("utf-8"))
+                        # Handle chat API response format
+                        if (
+                            "message" in json_response
+                            and "content" in json_response["message"]
+                        ):
+                            result_text += json_response["message"]["content"]
+                        elif "response" in json_response:  # Fallback for generate API
+                            result_text += json_response["response"]
+                        if json_response.get("done", False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+            return jsonify(
+                {"expanded_text": result_text, "context_used": len(context_items)}
+            )
+        else:
+            return jsonify({"error": "Failed to expand text"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/summarize", methods=["POST"])
+def summarize_text():
+    """Summarize selected text using AI"""
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    text = data.get("text", "")
+    model = data.get("model", DEFAULT_LLM_MODEL)
+
+    if not text.strip():
+        return jsonify({"error": "Text required"}), 400
+
+    try:
+        prompt = f"Please provide a concise summary of the following text:\n\n{text}"
+
+        response = generate_ollama_response(prompt, None, model, stream=False)
+
+        if response.status_code == 200:
+            result_text = ""
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        json_response = json.loads(line.decode("utf-8"))
+                        # Handle chat API response format
+                        if (
+                            "message" in json_response
+                            and "content" in json_response["message"]
+                        ):
+                            result_text += json_response["message"]["content"]
+                        elif "response" in json_response:  # Fallback for generate API
+                            result_text += json_response["response"]
+                        if json_response.get("done", False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+            return jsonify({"summary": result_text})
+        else:
+            return jsonify({"error": "Failed to summarize text"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/rephrase", methods=["POST"])
+def rephrase_text():
+    """Rephrase selected text using AI"""
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    text = data.get("text", "")
+    tone = data.get("tone", "neutral")  # professional, casual, academic, etc.
+    model = data.get("model", DEFAULT_LLM_MODEL)
+
+    if not text.strip():
+        return jsonify({"error": "Text required"}), 400
+
+    try:
+        prompt = f"Please rephrase the following text in a {tone} tone while maintaining the same meaning:\n\n{text}"
+
+        response = generate_ollama_response(prompt, None, model, stream=False)
+
+        if response.status_code == 200:
+            result_text = ""
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        json_response = json.loads(line.decode("utf-8"))
+                        # Handle chat API response format
+                        if (
+                            "message" in json_response
+                            and "content" in json_response["message"]
+                        ):
+                            result_text += json_response["message"]["content"]
+                        elif "response" in json_response:  # Fallback for generate API
+                            result_text += json_response["response"]
+                        if json_response.get("done", False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+            return jsonify({"rephrased_text": result_text})
+        else:
+            return jsonify({"error": "Failed to rephrase text"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/system-prompt", methods=["GET"])
+def get_system_prompt():
+    """Get current system prompt"""
+    return jsonify(
+        {
+            "system_prompt": current_system_prompt,
+            "default_prompt": DEFAULT_SYSTEM_PROMPT,
+        }
+    )
+
+
+@app.route("/api/ai/system-prompt", methods=["POST"])
+def set_system_prompt():
+    """Set custom system prompt"""
+    global current_system_prompt
+
+    data = request.get_json()
+    prompt = data.get("prompt", "")
+
+    if not prompt.strip():
+        # Reset to default if empty
+        current_system_prompt = DEFAULT_SYSTEM_PROMPT
+    else:
+        current_system_prompt = prompt.strip()
+
+    return jsonify({"success": True, "system_prompt": current_system_prompt})
 
 
 if __name__ == "__main__":

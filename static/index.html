@@ -55,9 +55,50 @@
                     <div id="model-info" class="model-info"></div>
                 </div>
                 
-                <h3>Related Notes</h3>
-                <div id="similar-content">
-                    <p class="empty-state">Type to see related content...</p>
+                <div class="ai-assistant">
+                    <h3>🤖 AI Assistant</h3>
+                    <div id="ai-status" class="ai-status">
+                        <span class="status-indicator">⚫</span>
+                        <span class="status-text">Checking...</span>
+                    </div>
+                    
+                    <div class="ai-controls">
+                        <div class="ai-system-prompt">
+                            <label for="ai-system-prompt">System Prompt:</label>
+                            <textarea id="ai-system-prompt" placeholder="Enter system prompt..." rows="2"></textarea>
+                            <div class="system-prompt-actions">
+                                <button id="ai-save-prompt" class="btn btn-small">Save</button>
+                                <button id="ai-reset-prompt" class="btn btn-small btn-secondary">Reset</button>
+                            </div>
+                        </div>
+                        
+                        <div class="ai-input-container">
+                            <textarea id="ai-prompt" placeholder="Ask something about your notes..." rows="3"></textarea>
+                            <button id="ai-generate" class="btn btn-small">Generate</button>
+                        </div>
+                        
+                        <div class="ai-options">
+                            <label>
+                                <input type="checkbox" id="ai-use-context" checked>
+                                Use context from notes
+                            </label>
+                            <select id="ai-model-selector" class="ai-model-selector">
+                                <option value="">Loading models...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="ai-response" class="ai-response">
+                        <div class="ai-response-content"></div>
+                        <div class="ai-response-meta"></div>
+                    </div>
+                </div>
+                
+                <div class="related-notes">
+                    <h3>Related Notes</h3>
+                    <div id="similar-content">
+                        <p class="empty-state">Type to see related content...</p>
+                    </div>
                 </div>
             </aside>
         </div>
@@ -82,6 +123,14 @@
             </div>
         </div>
     </dialog>
+    
+    <div id="context-menu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" data-action="expand">🔍 Expand on this</div>
+        <div class="context-menu-item" data-action="summarize">📝 Summarize</div>
+        <div class="context-menu-item" data-action="rephrase-professional">💼 Rephrase (Professional)</div>
+        <div class="context-menu-item" data-action="rephrase-casual">💬 Rephrase (Casual)</div>
+        <div class="context-menu-item" data-action="rephrase-academic">🎓 Rephrase (Academic)</div>
+    </div>
     
     <script src="/static/codemirror/codemirror.js"></script>
     <script src="/static/codemirror/overlay.js"></script>
