@@ -47,10 +47,10 @@ The focus of this phase is to build a usable, standalone markdown editor.
 
 In this phase, we make the application "smart" by helping the user discover connections within their own knowledge base.
 
-- [ ] **Note Indexing:** On startup or command, scan all notes and generate text embeddings for each paragraph.
-- [ ] **Local Vector Store:** Store these embeddings locally in a simple file (`index.json`).
-- [ ] **Real-time Suggestions:** As the user types, generate an embedding for the current text and find the most semantically similar notes from the index.
-- [ ] **Suggestion UI:** Display a list of related notes in a sidebar panel.
+- [x] **Note Indexing:** On startup or command, scan all notes and generate text embeddings for each paragraph.
+- [x] **Local Vector Store:** Store these embeddings locally in a simple file (`index.json`).
+- [x] **Real-time Suggestions:** As the user types, generate an embedding for the current text and find the most semantically similar notes from the index.
+- [x] **Suggestion UI:** Display a list of related notes in a sidebar panel.
 
 #### 🎯 **Phase 3: The Creative Assistant (Generative AI)**
 

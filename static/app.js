@@ -6,6 +6,7 @@ class PyNote {
         this.vaultName = null;
         this.unsavedChanges = false;
         this.editor = null;
+        this.similarityTimeout = null;
         this.init();
     }
 
@@ -68,6 +69,7 @@ class PyNote {
             this.unsavedChanges = true;
             this.updatePreview();
             this.updateUI();
+            this.debouncedSimilaritySearch();
         });
         
         // Create editor interface
@@ -106,6 +108,7 @@ class PyNote {
         document.getElementById('new-file').addEventListener('click', () => this.newFile());
         document.getElementById('save-file').addEventListener('click', () => this.saveFile());
         document.getElementById('delete-file').addEventListener('click', () => this.deleteFile());
+        document.getElementById('reindex').addEventListener('click', () => this.reindexVault());
         
         document.getElementById('cancel-vault').addEventListener('click', () => this.closeVaultDialog());
         document.getElementById('confirm-vault').addEventListener('click', () => this.selectVault());
@@ -671,6 +674,138 @@ class PyNote {
             currentFileEl.textContent = statusText;
             saveBtn.disabled = true;
             deleteBtn.disabled = true;
+        }
+    }
+
+    debouncedSimilaritySearch() {
+        if (this.similarityTimeout) {
+            clearTimeout(this.similarityTimeout);
+        }
+        
+        this.similarityTimeout = setTimeout(() => {
+            this.searchSimilarContent();
+        }, 1000); // Wait 1 second after user stops typing
+    }
+
+    async searchSimilarContent() {
+        if (!this.currentFile || !this.editor) {
+            this.updateSimilarContentDisplay([]);
+            return;
+        }
+
+        const content = this.editor.getValue().trim();
+        if (content.length < 50) { // Only search if there's substantial content
+            this.updateSimilarContentDisplay([]);
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/similar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query: content,
+                    current_file: this.currentFile.path,
+                    limit: 5
+                })
+            });
+
+            const result = await response.json();
+            if (result.similar) {
+                this.updateSimilarContentDisplay(result.similar);
+            } else {
+                console.error('Error searching similar content:', result.error);
+                this.updateSimilarContentDisplay([]);
+            }
+        } catch (error) {
+            console.error('Error searching similar content:', error);
+            this.updateSimilarContentDisplay([]);
+        }
+    }
+
+    updateSimilarContentDisplay(similarItems) {
+        const container = document.getElementById('similar-content');
+        
+        if (similarItems.length === 0) {
+            container.innerHTML = '<p class="empty-state">Type to see related content...</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+        
+        similarItems.forEach(item => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'similar-item';
+            
+            const headerEl = document.createElement('div');
+            headerEl.className = 'similar-item-header';
+            
+            const fileEl = document.createElement('span');
+            fileEl.className = 'similar-item-file';
+            fileEl.textContent = item.file_path;
+            
+            const scoreEl = document.createElement('span');
+            scoreEl.className = 'similar-item-score';
+            scoreEl.textContent = Math.round(item.similarity * 100) + '%';
+            
+            const snippetEl = document.createElement('div');
+            snippetEl.className = 'similar-item-snippet';
+            snippetEl.textContent = item.snippet;
+            
+            headerEl.appendChild(fileEl);
+            headerEl.appendChild(scoreEl);
+            
+            itemEl.appendChild(headerEl);
+            itemEl.appendChild(snippetEl);
+            
+            // Add click handler to open the similar file
+            itemEl.addEventListener('click', () => {
+                this.openSimilarFile(item.file_path);
+            });
+            
+            container.appendChild(itemEl);
+        });
+    }
+
+    async openSimilarFile(filePath) {
+        const file = this.files.find(f => f.path === filePath);
+        if (file) {
+            await this.openFile(file);
+        }
+    }
+
+    async reindexVault() {
+        if (!this.vaultName) {
+            alert('No vault selected');
+            return;
+        }
+
+        const button = document.getElementById('reindex');
+        const originalText = button.textContent;
+        button.textContent = 'Indexing...';
+        button.disabled = true;
+
+        try {
+            const response = await fetch('/api/reindex', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert(`Successfully indexed ${result.processed} files!`);
+                // Trigger a new similarity search if we have content
+                if (this.currentFile && this.editor) {
+                    this.searchSimilarContent();
+                }
+            } else {
+                alert('Error indexing vault: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error indexing vault: ' + error.message);
+        } finally {
+            button.textContent = originalText;
+            button.disabled = false;
         }
     }
 }
