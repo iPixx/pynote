@@ -165,9 +165,9 @@ def find_similar_content(query_text, current_file_path=None, limit=5):
         return []
 
     try:
-        print(f"Initializing embedding model for similarity search...")
+        print("Initializing embedding model for similarity search...")
         model = initialize_embedding_model()
-        print(f"Encoding query text...")
+        print("Encoding query text...")
         query_embedding = model.encode([query_text])[0]
         print(f"Query embedding shape: {query_embedding.shape}")
 
@@ -229,6 +229,19 @@ def get_files():
     def build_tree_structure():
         tree = {}
 
+        # First, add all directories (including empty ones)
+        for dir_path in vault_path.rglob("*"):
+            if dir_path.is_dir():
+                relative_path = dir_path.relative_to(vault_path)
+                parts = relative_path.parts
+                
+                current = tree
+                for part in parts:
+                    if part not in current:
+                        current[part] = {"type": "folder", "children": {}}
+                    current = current[part]["children"]
+
+        # Then, add all .md files
         for file_path in vault_path.rglob("*.md"):
             relative_path = file_path.relative_to(vault_path)
             parts = relative_path.parts
@@ -328,6 +341,57 @@ def delete_file(file_path):
 
     try:
         full_path.unlink()
+        
+        # Remove embeddings for deleted file
+        global vector_store
+        keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{file_path}::")]
+        for key in keys_to_remove:
+            del vector_store[key]
+        save_vector_store()
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/delete", methods=["POST"])
+def delete_file_or_folder():
+    global vector_store
+    
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    path = data.get("path")
+
+    if not path:
+        return jsonify({"error": "Path required"}), 400
+
+    full_path = vault_path / path
+    if not full_path.exists():
+        return jsonify({"error": "File or folder not found"}), 404
+
+    try:
+        if full_path.is_file():
+            full_path.unlink()
+            
+            # Remove embeddings for deleted file
+            if path.endswith('.md'):
+                keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{path}::")]
+                for key in keys_to_remove:
+                    del vector_store[key]
+                save_vector_store()
+        else:
+            # Delete folder and all its contents
+            import shutil
+            shutil.rmtree(full_path)
+            
+            # Remove embeddings for all files in the deleted folder
+            keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{path}/")]
+            for key in keys_to_remove:
+                del vector_store[key]
+            save_vector_store()
+        
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -358,6 +422,89 @@ def move_file():
         target_full_path.parent.mkdir(parents=True, exist_ok=True)
         source_full_path.rename(target_full_path)
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/rename", methods=["POST"])
+def rename_file_or_folder():
+    global vector_store
+    
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    old_path = data.get("old_path")
+    new_name = data.get("new_name")
+
+    if not old_path or not new_name:
+        return jsonify({"error": "Old path and new name required"}), 400
+
+    old_full_path = vault_path / old_path
+    if not old_full_path.exists():
+        return jsonify({"error": "File or folder not found"}), 404
+
+    # Calculate new path
+    if "/" in old_path:
+        parent_path = "/".join(old_path.split("/")[:-1])
+        new_path = f"{parent_path}/{new_name}"
+    else:
+        new_path = new_name
+
+    new_full_path = vault_path / new_path
+
+    if new_full_path.exists():
+        return jsonify({"error": "A file or folder with this name already exists"}), 400
+
+    try:
+        old_full_path.rename(new_full_path)
+        
+        # Update embeddings if it's a file
+        if old_full_path.is_file() and old_path.endswith('.md'):
+            # Remove old embeddings
+            keys_to_remove = [k for k in vector_store.keys() if k.startswith(f"{old_path}::")]
+            for key in keys_to_remove:
+                del vector_store[key]
+            
+            # Add new embeddings if file has content
+            if new_full_path.exists():
+                try:
+                    content = new_full_path.read_text(encoding="utf-8")
+                    update_file_embeddings(new_path, content)
+                except Exception:
+                    pass
+        
+        return jsonify({"success": True, "new_path": new_path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/create-folder", methods=["POST"])
+def create_folder():
+    if not vault_path:
+        return jsonify({"error": "No vault selected"}), 400
+
+    data = request.get_json()
+    folder_name = data.get("folder_name")
+    parent_path = data.get("parent_path", "")
+
+    if not folder_name:
+        return jsonify({"error": "Folder name required"}), 400
+
+    # Calculate full folder path
+    if parent_path:
+        folder_path = f"{parent_path}/{folder_name}"
+    else:
+        folder_path = folder_name
+
+    full_folder_path = vault_path / folder_path
+
+    if full_folder_path.exists():
+        return jsonify({"error": "A folder with this name already exists"}), 400
+
+    try:
+        full_folder_path.mkdir(parents=True, exist_ok=True)
+        return jsonify({"success": True, "folder_path": folder_path})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -486,7 +633,7 @@ def set_current_model():
         embedding_model = None  # Reset to force reload with new model
         
         # Try to initialize the new model
-        test_model = initialize_embedding_model()
+        initialize_embedding_model()
         print(f"Successfully tested new model: {model_name}")
         
         return jsonify({

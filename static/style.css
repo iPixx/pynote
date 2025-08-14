@@ -43,7 +43,9 @@ body {
     background-color: #fff;
     border-right: 1px solid #ddd;
     padding: 1rem;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .sidebar h3 {
@@ -103,6 +105,7 @@ body {
 .file-item.selected-folder:hover {
     background-color: #005a9e;
 }
+
 
 .file-item.dragging {
     opacity: 0.5;
@@ -364,8 +367,22 @@ body {
 
 #file-tree {
     margin-bottom: 1rem;
-    max-height: 400px;
+    max-height: calc(100vh - 300px);
     overflow-y: auto;
+    flex: 1;
+}
+
+.file-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.file-controls .btn {
+    width: 100%;
+    justify-self: stretch;
 }
 
 .vault-dialog {

@@ -109,6 +109,7 @@ class PyNote {
     bindEvents() {
         document.getElementById('select-vault').addEventListener('click', () => this.openVaultDialog());
         document.getElementById('new-file').addEventListener('click', () => this.newFile());
+        document.getElementById('new-folder').addEventListener('click', () => this.newFolder());
         document.getElementById('save-file').addEventListener('click', () => this.saveFile());
         document.getElementById('delete-file').addEventListener('click', () => this.deleteFile());
         document.getElementById('reindex').addEventListener('click', () => this.reindexVault());
@@ -119,7 +120,7 @@ class PyNote {
         document.getElementById('browse-vault').addEventListener('click', () => this.browseVault());
         
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('.file-item') && !e.target.closest('#new-file')) {
+            if (!e.target.closest('.file-item') && !e.target.closest('.file-controls')) {
                 this.unselectFolder();
             }
         });
@@ -258,10 +259,19 @@ class PyNote {
             const fileItem = document.createElement('div');
             fileItem.className = `file-item ${file.type}`;
             fileItem.style.paddingLeft = `${(file.level || 0) * 20 + 8}px`;
+            fileItem.setAttribute('data-path', file.path);
+            fileItem.setAttribute('data-level', file.level || 0);
+            fileItem.setAttribute('data-type', file.type);
+            
+            // Show root level items by default, hide nested ones
+            if ((file.level || 0) === 0) {
+                fileItem.style.display = 'flex';
+            } else {
+                fileItem.style.display = 'none';
+            }
             
             if (file.type === 'file') {
                 fileItem.draggable = true;
-                fileItem.setAttribute('data-file-path', file.path);
             }
             
             const icon = document.createElement('span');
@@ -281,6 +291,10 @@ class PyNote {
                     this.selectParentFolder(file);
                 });
                 
+                fileItem.addEventListener('dblclick', () => {
+                    this.renameItem(file);
+                });
+                
                 fileItem.addEventListener('dragstart', (e) => {
                     e.dataTransfer.setData('text/plain', file.path);
                     e.dataTransfer.effectAllowed = 'move';
@@ -291,16 +305,12 @@ class PyNote {
                     fileItem.classList.remove('dragging');
                 });
             } else {
-                fileItem.addEventListener('click', (e) => {
-                    if (e.ctrlKey || e.metaKey) {
-                        this.selectFolder(fileItem, file);
-                    } else {
-                        this.toggleFolder(fileItem, file);
-                    }
+                fileItem.addEventListener('click', () => {
+                    this.toggleFolder(fileItem, file);
                 });
-                fileItem.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    this.selectFolder(fileItem, file);
+                
+                fileItem.addEventListener('dblclick', () => {
+                    this.renameItem(file);
                 });
                 
                 fileItem.addEventListener('dragover', (e) => {
@@ -343,12 +353,10 @@ class PyNote {
     hideChildItems(folderPath) {
         const items = document.querySelectorAll('.file-item');
         items.forEach(item => {
-            const itemData = this.files.find(f => 
-                item.querySelector('.file-name').textContent === f.name
-            );
-            if (itemData && itemData.path.startsWith(folderPath + '/')) {
+            const itemPath = item.getAttribute('data-path');
+            if (itemPath && itemPath.startsWith(folderPath + '/')) {
                 item.style.display = 'none';
-                if (itemData.type === 'folder') {
+                if (item.getAttribute('data-type') === 'folder') {
                     item.classList.remove('expanded');
                     const icon = item.querySelector('.file-icon');
                     if (icon) icon.textContent = '📁';
@@ -362,16 +370,16 @@ class PyNote {
         const folderLevel = folderPath.split('/').length - 1;
         
         items.forEach(item => {
-            const itemData = this.files.find(f => 
-                item.querySelector('.file-name').textContent === f.name
-            );
-            if (itemData && 
-                itemData.path.startsWith(folderPath + '/') && 
-                itemData.level === folderLevel + 1) {
+            const itemPath = item.getAttribute('data-path');
+            const itemLevel = parseInt(item.getAttribute('data-level'));
+            if (itemPath && 
+                itemPath.startsWith(folderPath + '/') && 
+                itemLevel === folderLevel + 1) {
                 item.style.display = 'flex';
             }
         });
     }
+
 
     selectFolder(folderElement, folder) {
         const isAlreadySelected = folderElement.classList.contains('selected-folder');
@@ -489,6 +497,72 @@ class PyNote {
             alert('Error moving file: ' + error.message);
         }
     }
+
+    async newFolder() {
+        const folderName = prompt('Enter folder name:');
+        if (!folderName) return;
+
+        let parentPath = '';
+        if (this.selectedFolder) {
+            parentPath = this.selectedFolder.path;
+        }
+
+        try {
+            const response = await fetch('/api/create-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    folder_name: folderName,
+                    parent_path: parentPath
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                await this.loadFiles();
+                alert('Folder created successfully!');
+            } else {
+                alert('Error creating folder: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error creating folder: ' + error.message);
+        }
+    }
+
+    async renameItem(item) {
+        const currentName = item.name;
+        const newName = prompt(`Rename ${item.type}:`, currentName);
+        if (!newName || newName === currentName) return;
+
+        try {
+            const response = await fetch('/api/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    old_path: item.path,
+                    new_name: newName
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                await this.loadFiles();
+                
+                // Update current file path if this was the current file
+                if (this.currentFile && this.currentFile.path === item.path) {
+                    this.currentFile.path = result.new_path;
+                    this.currentFile.name = newName;
+                }
+                
+                alert(`${item.type.charAt(0).toUpperCase() + item.type.slice(1)} renamed successfully!`);
+            } else {
+                alert('Error renaming: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error renaming: ' + error.message);
+        }
+    }
+
 
     async openFile(file) {
         if (this.unsavedChanges) {
@@ -650,10 +724,12 @@ class PyNote {
         const saveBtn = document.getElementById('save-file');
         const deleteBtn = document.getElementById('delete-file');
         const newFileBtn = document.getElementById('new-file');
+        const newFolderBtn = document.getElementById('new-folder');
         const sidebarHeader = document.querySelector('.sidebar h3');
 
         const hasVault = this.files && this.files.length > 0;
         newFileBtn.disabled = !hasVault;
+        newFolderBtn.disabled = !hasVault;
 
         if (this.vaultName) {
             sidebarHeader.textContent = `🗄️ ${this.vaultName.toUpperCase()}`;
