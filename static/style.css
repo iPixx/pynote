@@ -518,12 +518,35 @@ body {
 }
 
 .similar-item-score {
-    background-color: #007acc;
     color: white;
     padding: 0.125rem 0.375rem;
     border-radius: 12px;
     font-size: 0.75rem;
     font-weight: 500;
+    transition: background-color 0.2s ease;
+    position: relative;
+}
+
+/* Color classes for different confidence levels */
+.confidence-very-low {
+    background-color: #dc3545 !important; /* Red */
+}
+
+.confidence-low {
+    background-color: #fd7e14 !important; /* Orange */
+}
+
+.confidence-medium {
+    background-color: #ffc107 !important; /* Yellow */
+    color: #333 !important; /* Dark text for better contrast on yellow */
+}
+
+.confidence-high {
+    background-color: #20c997 !important; /* Teal */
+}
+
+.confidence-very-high {
+    background-color: #28a745 !important; /* Green */
 }
 
 .similar-item-snippet {
@@ -533,6 +556,7 @@ body {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
+    line-clamp: 3;
     overflow: hidden;
 }
 

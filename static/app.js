@@ -146,7 +146,7 @@ class PyNote {
         window.addEventListener('beforeunload', (e) => {
             if (this.unsavedChanges) {
                 e.preventDefault();
-                e.returnValue = '';
+                return '';
             }
         });
 
@@ -826,7 +826,12 @@ class PyNote {
             
             const scoreEl = document.createElement('span');
             scoreEl.className = 'similar-item-score';
-            scoreEl.textContent = Math.round(item.similarity * 100) + '%';
+            const percentage = Math.round(item.similarity * 100);
+            scoreEl.textContent = percentage + '%';
+            
+            // Add confidence-based color class
+            const confidenceClass = this.getConfidenceClass(percentage);
+            scoreEl.classList.add(confidenceClass);
             
             const snippetEl = document.createElement('div');
             snippetEl.className = 'similar-item-snippet';
@@ -851,6 +856,20 @@ class PyNote {
         const file = this.files.find(f => f.path === filePath);
         if (file) {
             await this.openFile(file);
+        }
+    }
+
+    getConfidenceClass(percentage) {
+        if (percentage >= 80) {
+            return 'confidence-very-high';  // 80-100%: Green
+        } else if (percentage >= 60) {
+            return 'confidence-high';       // 60-79%: Teal
+        } else if (percentage >= 40) {
+            return 'confidence-medium';     // 40-59%: Yellow
+        } else if (percentage >= 20) {
+            return 'confidence-low';        // 20-39%: Orange
+        } else {
+            return 'confidence-very-low';   // 0-19%: Red
         }
     }
 
