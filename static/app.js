@@ -16,11 +16,83 @@ class PyNote {
         this.init();
     }
 
+    // Toast notification system
+    showToast(message, type = 'info', duration = 4000) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        const icon = this.getToastIcon(type);
+        const closeButton = document.createElement('button');
+        closeButton.className = 'toast-close';
+        closeButton.innerHTML = '×';
+        closeButton.onclick = () => this.removeToast(toast);
+
+        toast.innerHTML = `
+            <span class="toast-icon">${icon}</span>
+            <span class="toast-message">${message}</span>
+        `;
+        toast.appendChild(closeButton);
+
+        container.appendChild(toast);
+
+        // Show toast
+        setTimeout(() => toast.classList.add('show'), 10);
+
+        // Auto-remove toast
+        if (duration > 0) {
+            setTimeout(() => this.removeToast(toast), duration);
+        }
+
+        return toast;
+    }
+
+    getToastIcon(type) {
+        const icons = {
+            success: '✓',
+            error: '✕',
+            warning: '⚠',
+            info: 'ℹ'
+        };
+        return icons[type] || icons.info;
+    }
+
+    removeToast(toast) {
+        if (!toast.parentElement) return;
+        
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.parentElement.removeChild(toast);
+            }
+        }, 300);
+    }
+
+    // Convenience methods for different toast types
+    showSuccess(message, duration = 4000) {
+        return this.showToast(message, 'success', duration);
+    }
+
+    showError(message, duration = 6000) {
+        return this.showToast(message, 'error', duration);
+    }
+
+    showWarning(message, duration = 5000) {
+        return this.showToast(message, 'warning', duration);
+    }
+
+    showInfo(message, duration = 4000) {
+        return this.showToast(message, 'info', duration);
+    }
+
     init() {
         this.bindEvents();
         this.initEditor();
         this.loadAvailableModels();
         this.initAI();
+        this.checkForExistingVault();
         this.updateUI();
     }
 
@@ -187,14 +259,10 @@ class PyNote {
             }
         });
 
-        // Keyboard shortcuts
+        // Keyboard shortcuts (only for actions not handled by CodeMirror)
         document.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey)) {
                 switch(e.key) {
-                    case 's':
-                        e.preventDefault();
-                        this.saveFile();
-                        break;
                     case 'n':
                         e.preventDefault();
                         this.newFile();
@@ -229,7 +297,7 @@ class PyNote {
                 }
             }
         } else {
-            alert('Directory picker not supported in this browser. Please enter the path manually.');
+            this.showWarning('Directory picker not supported in this browser. Please enter the path manually.');
         }
     }
 
@@ -238,7 +306,7 @@ class PyNote {
         const path = pathInput.value.trim();
         
         if (!path) {
-            alert('Please enter a vault path');
+            this.showWarning('Please enter a vault path');
             return;
         }
 
@@ -252,15 +320,50 @@ class PyNote {
             const result = await response.json();
             if (result.success) {
                 this.vaultName = path.split('/').pop();
+                
+                // Update button text
+                const selectVaultBtn = document.getElementById('select-vault');
+                if (selectVaultBtn) {
+                    selectVaultBtn.textContent = `📁 ${this.vaultName}`;
+                }
+                
                 this.closeVaultDialog();
                 await this.loadFiles();
                 this.updateUI();
-                alert('Vault selected successfully!');
+                this.showSuccess('Vault selected successfully!');
             } else {
-                alert('Error: ' + result.error);
+                this.showError('Error: ' + result.error);
             }
         } catch (error) {
-            alert('Error selecting vault: ' + error.message);
+            this.showError('Error selecting vault: ' + error.message);
+        }
+    }
+
+    async checkForExistingVault() {
+        try {
+            const response = await fetch('/api/vault');
+            const vaultInfo = await response.json();
+            
+            if (vaultInfo.has_vault && vaultInfo.vault_path) {
+                console.log('Found existing vault:', vaultInfo.vault_path);
+                this.vaultName = vaultInfo.vault_path.split('/').pop();
+                
+                // Update UI to show vault is loaded
+                const selectVaultBtn = document.getElementById('select-vault');
+                if (selectVaultBtn) {
+                    selectVaultBtn.textContent = `📁 ${this.vaultName}`;
+                }
+                
+                // Load files from the vault
+                await this.loadFiles();
+                
+                this.showSuccess(`Vault "${this.vaultName}" loaded automatically`);
+            } else {
+                console.log('No existing vault found');
+            }
+        } catch (error) {
+            console.log('Error checking for existing vault:', error.message);
+            // Don't show error to user as this is background functionality
         }
     }
 
@@ -274,10 +377,10 @@ class PyNote {
                 this.renderFileTree();
                 this.updateUI();
             } else {
-                alert('Error loading files: ' + files.error);
+                this.showError('Error loading files: ' + files.error);
             }
         } catch (error) {
-            alert('Error loading files: ' + error.message);
+            this.showError('Error loading files: ' + error.message);
         }
     }
 
@@ -486,12 +589,12 @@ class PyNote {
                     this.currentFile.path = newFilePath;
                     this.updateUI();
                 }
-                alert('File moved successfully!');
+                this.showSuccess('File moved successfully!');
             } else {
-                alert('Error moving file: ' + result.error);
+                this.showError('Error moving file: ' + result.error);
             }
         } catch (error) {
-            alert('Error moving file: ' + error.message);
+            this.showError('Error moving file: ' + error.message);
         }
     }
 
@@ -519,12 +622,12 @@ class PyNote {
                     this.currentFile.path = fileName;
                     this.updateUI();
                 }
-                alert('File moved to vault root successfully!');
+                this.showSuccess('File moved to vault root successfully!');
             } else {
-                alert('Error moving file: ' + result.error);
+                this.showError('Error moving file: ' + result.error);
             }
         } catch (error) {
-            alert('Error moving file: ' + error.message);
+            this.showError('Error moving file: ' + error.message);
         }
     }
 
@@ -550,12 +653,12 @@ class PyNote {
             const result = await response.json();
             if (result.success) {
                 await this.loadFiles();
-                alert('Folder created successfully!');
+                this.showSuccess('Folder created successfully!');
             } else {
-                alert('Error creating folder: ' + result.error);
+                this.showError('Error creating folder: ' + result.error);
             }
         } catch (error) {
-            alert('Error creating folder: ' + error.message);
+            this.showError('Error creating folder: ' + error.message);
         }
     }
 
@@ -584,12 +687,12 @@ class PyNote {
                     this.currentFile.name = newName;
                 }
                 
-                alert(`${item.type.charAt(0).toUpperCase() + item.type.slice(1)} renamed successfully!`);
+                this.showSuccess(`${item.type.charAt(0).toUpperCase() + item.type.slice(1)} renamed successfully!`);
             } else {
-                alert('Error renaming: ' + result.error);
+                this.showError('Error renaming: ' + result.error);
             }
         } catch (error) {
-            alert('Error renaming: ' + error.message);
+            this.showError('Error renaming: ' + error.message);
         }
     }
 
@@ -618,10 +721,10 @@ class PyNote {
                     this.editor.refresh();
                 }
             } else {
-                alert('Error opening file: ' + result.error);
+                this.showError('Error opening file: ' + result.error);
             }
         } catch (error) {
-            alert('Error opening file: ' + error.message);
+            this.showError('Error opening file: ' + error.message);
         }
     }
 
@@ -639,7 +742,7 @@ class PyNote {
         if (!fileName) return;
         
         if (!fileName.endsWith('.md')) {
-            alert('File name must end with .md');
+            this.showWarning('File name must end with .md');
             return;
         }
 
@@ -688,12 +791,12 @@ class PyNote {
                 this.unsavedChanges = false;
                 this.updateUI();
                 await this.loadFiles();
-                alert('File saved successfully!');
+                this.showSuccess('File saved successfully!');
             } else {
-                alert('Error saving file: ' + result.error);
+                this.showError('Error saving file: ' + result.error);
             }
         } catch (error) {
-            alert('Error saving file: ' + error.message);
+            this.showError('Error saving file: ' + error.message);
         }
     }
 
@@ -719,12 +822,12 @@ class PyNote {
                 this.updatePreview();
                 this.updateUI();
                 await this.loadFiles();
-                alert('File deleted successfully!');
+                this.showSuccess('File deleted successfully!');
             } else {
-                alert('Error deleting file: ' + result.error);
+                this.showError('Error deleting file: ' + result.error);
             }
         } catch (error) {
-            alert('Error deleting file: ' + error.message);
+            this.showError('Error deleting file: ' + error.message);
         }
     }
 
@@ -905,7 +1008,7 @@ class PyNote {
 
     async reindexVault() {
         if (!this.vaultName) {
-            alert('No vault selected');
+            this.showWarning('No vault selected');
             return;
         }
 
@@ -922,16 +1025,16 @@ class PyNote {
 
             const result = await response.json();
             if (result.success) {
-                alert(`Successfully indexed ${result.processed} files!`);
+                this.showSuccess(`Successfully indexed ${result.processed} files!`);
                 // Trigger a new similarity search if we have content
                 if (this.currentFile && this.editor) {
                     this.searchSimilarContent();
                 }
             } else {
-                alert('Error indexing vault: ' + result.error);
+                this.showError('Error indexing vault: ' + result.error);
             }
         } catch (error) {
-            alert('Error indexing vault: ' + error.message);
+            this.showError('Error indexing vault: ' + error.message);
         } finally {
             button.textContent = originalText;
             button.disabled = false;
@@ -1009,12 +1112,12 @@ class PyNote {
                     }
                 }
             } else {
-                alert('Error changing model: ' + result.error);
+                this.showError('Error changing model: ' + result.error);
                 // Revert selection
                 selector.value = this.currentModel;
             }
         } catch (error) {
-            alert('Error changing model: ' + error.message);
+            this.showError('Error changing model: ' + error.message);
             selector.value = this.currentModel;
         } finally {
             selector.disabled = false;
@@ -1299,7 +1402,7 @@ class PyNote {
             }
             
         } catch (error) {
-            alert(`Error processing text: ${error.message}`);
+            this.showError(`Error processing text: ${error.message}`);
         }
     }
 
@@ -1327,12 +1430,12 @@ class PyNote {
             
             const result = await response.json();
             if (result.success) {
-                alert('System prompt saved successfully!');
+                this.showSuccess('System prompt saved successfully!');
             } else {
-                alert('Error saving system prompt');
+                this.showError('Error saving system prompt');
             }
         } catch (error) {
-            alert(`Error saving system prompt: ${error.message}`);
+            this.showError(`Error saving system prompt: ${error.message}`);
         }
     }
 
@@ -1347,12 +1450,12 @@ class PyNote {
             const result = await response.json();
             if (result.success) {
                 document.getElementById('ai-system-prompt').value = result.system_prompt;
-                alert('System prompt reset to default!');
+                this.showSuccess('System prompt reset to default!');
             } else {
-                alert('Error resetting system prompt');
+                this.showError('Error resetting system prompt');
             }
         } catch (error) {
-            alert(`Error resetting system prompt: ${error.message}`);
+            this.showError(`Error resetting system prompt: ${error.message}`);
         }
     }
 }

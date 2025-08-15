@@ -13,14 +13,17 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
+# Settings file path
+SETTINGS_FILE = Path("pynote_settings.json")
+
 vault_path = None
 embedding_model = None
 vector_store = {}
-current_model_name = "all-mpnet-base-v2"
+current_model_name = "nomic-ai/nomic-embed-text-v1.5"
 
 # Ollama configuration
 OLLAMA_BASE_URL = "http://localhost:11434"
-DEFAULT_LLM_MODEL = "llama3.2"
+DEFAULT_LLM_MODEL = "llama3:8b-instruct-q4_0"
 DEFAULT_SYSTEM_PROMPT = (
     "Rispondi sempre in italiano. Fornisci risposte chiare, utili e ben strutturate."
 )
@@ -66,6 +69,44 @@ AVAILABLE_MODELS = {
     },
 }
 
+
+# Settings management functions
+def load_settings():
+    """Load application settings from file"""
+    global vault_path
+    
+    if SETTINGS_FILE.exists():
+        try:
+            with open(SETTINGS_FILE, 'r') as f:
+                settings = json.load(f)
+                
+            last_vault = settings.get('last_vault_path')
+            if last_vault and os.path.exists(last_vault):
+                vault_path = Path(last_vault)
+                print(f"Loaded last vault: {vault_path}")
+                # Load vector store for the vault
+                load_vector_store()
+                return True
+            else:
+                print("Last vault path not found or doesn't exist")
+        except Exception as e:
+            print(f"Error loading settings: {str(e)}")
+    
+    return False
+
+def save_settings():
+    """Save application settings to file"""
+    settings = {
+        'last_vault_path': str(vault_path) if vault_path else None,
+        'current_model': current_model_name
+    }
+    
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+        print(f"Saved settings: {settings}")
+    except Exception as e:
+        print(f"Error saving settings: {str(e)}")
 
 # Ollama integration functions
 def check_ollama_connection():
@@ -175,9 +216,59 @@ def initialize_embedding_model():
             # Some models require trust_remote_code=True
             if current_model_name == "nomic-ai/nomic-embed-text-v1.5":
                 print("Using trust_remote_code=True for nomic model")
-                embedding_model = SentenceTransformer(
-                    current_model_name, trust_remote_code=True
-                )
+                try:
+                    # Try to load model with explicit device handling
+                    import torch
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    print(f"Using device: {device}")
+                    
+                    # Try multiple loading strategies for nomic model
+                    try:
+                        # Strategy 1: Load with explicit CPU device first to avoid tensor copy issues
+                        # Also set cache_folder to avoid permission issues
+                        embedding_model = SentenceTransformer(
+                            current_model_name, 
+                            trust_remote_code=True,
+                            device="cpu",
+                            cache_folder=None  # Use default cache
+                        )
+                        # Then move to target device if different, using proper tensor assignment
+                        if device != "cpu" and torch.cuda.is_available():
+                            print(f"Moving model to {device}")
+                            # Use to() with non_blocking for better performance
+                            embedding_model = embedding_model.to(device, non_blocking=True)
+                    except Exception as strategy1_error:
+                        print(f"Strategy 1 failed: {str(strategy1_error)}")
+                        # Strategy 2: Load with target device directly
+                        try:
+                            embedding_model = SentenceTransformer(
+                                current_model_name, 
+                                trust_remote_code=True,
+                                device=device,
+                                cache_folder=None
+                            )
+                        except Exception as strategy2_error:
+                            print(f"Strategy 2 failed: {str(strategy2_error)}")
+                            # Strategy 3: Load without device specification, let PyTorch handle it
+                            embedding_model = SentenceTransformer(
+                                current_model_name, 
+                                trust_remote_code=True
+                            )
+                except Exception as device_error:
+                    print(f"Device-specific loading failed: {str(device_error)}")
+                    # Fallback: try loading without explicit device specification
+                    try:
+                        embedding_model = SentenceTransformer(
+                            current_model_name, trust_remote_code=True
+                        )
+                    except Exception as final_error:
+                        print(f"Final attempt failed: {str(final_error)}")
+                        # Try with additional torch settings
+                        import torch
+                        torch.backends.cudnn.enabled = False  # Disable cuDNN which might cause issues
+                        embedding_model = SentenceTransformer(
+                            current_model_name, trust_remote_code=True
+                        )
             else:
                 embedding_model = SentenceTransformer(current_model_name)
             print(f"Successfully loaded model: {current_model_name}")
@@ -319,6 +410,14 @@ def serve_static(filename):
     return send_from_directory("static", filename)
 
 
+@app.route("/api/vault", methods=["GET"])
+def get_vault():
+    """Get current vault status"""
+    return jsonify({
+        "vault_path": str(vault_path) if vault_path else None,
+        "has_vault": vault_path is not None
+    })
+
 @app.route("/api/set-vault", methods=["POST"])
 def set_vault():
     global vault_path
@@ -330,6 +429,7 @@ def set_vault():
 
     vault_path = Path(path)
     load_vector_store()
+    save_settings()  # Save the vault path for next startup
     return jsonify({"success": True, "path": str(vault_path)})
 
 
@@ -735,7 +835,7 @@ def get_available_models():
 
 @app.route("/api/models/current", methods=["POST"])
 def set_current_model():
-    global current_model_name, embedding_model
+    global current_model_name, embedding_model, vector_store
 
     data = request.get_json()
     model_name = data.get("model_name")
@@ -757,11 +857,33 @@ def set_current_model():
         initialize_embedding_model()
         print(f"Successfully tested new model: {model_name}")
 
+        # Check if vector store dimensions are compatible
+        if vector_store:
+            # Get the dimension of the new model
+            test_embedding = embedding_model.encode(["test"])[0]
+            new_dimension = test_embedding.shape[0]
+            
+            # Check existing embeddings dimension
+            first_key = next(iter(vector_store))
+            existing_dimension = vector_store[first_key].shape[0]
+            
+            if new_dimension != existing_dimension:
+                print(f"Dimension mismatch detected: new model={new_dimension}D, existing embeddings={existing_dimension}D")
+                print("Clearing vector store to prevent compatibility issues")
+                vector_store = {}
+                # Save empty vector store
+                save_vector_store()
+                message = f"Switched to {model_name}. Vector store cleared due to dimension mismatch. Please reindex."
+            else:
+                message = f"Switched to {model_name}. Reindex recommended."
+        else:
+            message = f"Switched to {model_name}. Reindex recommended."
+
         return jsonify(
             {
                 "success": True,
                 "current_model": current_model_name,
-                "message": f"Switched to {model_name}. Reindex recommended.",
+                "message": message,
             }
         )
     except Exception as e:
@@ -1083,4 +1205,6 @@ def set_system_prompt():
 
 
 if __name__ == "__main__":
+    # Load settings on startup
+    load_settings()
     app.run(debug=True, port=8000)

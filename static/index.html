@@ -62,6 +62,13 @@
                         <span class="status-text">Checking...</span>
                     </div>
                     
+                    <div class="ai-model-selection">
+                        <h4>LLM Model</h4>
+                        <select id="ai-model-selector" class="ai-model-selector">
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+                    
                     <div class="ai-controls">
                         <div class="ai-system-prompt">
                             <label for="ai-system-prompt">System Prompt:</label>
@@ -82,9 +89,6 @@
                                 <input type="checkbox" id="ai-use-context" checked>
                                 Use context from notes
                             </label>
-                            <select id="ai-model-selector" class="ai-model-selector">
-                                <option value="">Loading models...</option>
-                            </select>
                         </div>
                     </div>
                     
@@ -131,6 +135,8 @@
         <div class="context-menu-item" data-action="rephrase-casual">💬 Rephrase (Casual)</div>
         <div class="context-menu-item" data-action="rephrase-academic">🎓 Rephrase (Academic)</div>
     </div>
+    
+    <div id="toast-container" class="toast-container"></div>
     
     <script src="/static/codemirror/codemirror.js"></script>
     <script src="/static/codemirror/overlay.js"></script>
